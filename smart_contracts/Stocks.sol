@@ -13,7 +13,7 @@ contract Stocks {
     }
 
 
-    uint public constant timeBetweenMeetings = 10 minutes;
+    uint public constant timeBetweenMeetings = 2 minutes;
     uint public constant minTimeToMakeProposals = 1 minutes;
     uint public constant timeToVote = 1 minutes;
 
@@ -36,6 +36,7 @@ contract Stocks {
         stocksCount = _stocksCount;
         stockholders[address(this)].stocksCount = _stocksCount;
         lastMeetingTime = block.timestamp;
+        stockholderList.push(address(this));
         //isProposalTime = false;
         //isVotingTime = false;
     }
@@ -57,41 +58,39 @@ contract Stocks {
     }
 
     modifier notLargerThanBalance(uint256 amount) {
-        require(address(this).balance >= amount);
+        require(address(this).balance >= amount, "Amount is larger than balance");
         _;
     }
 
-    modifier notLessThan(uint256 a, uint256 b) {
-        require(a >= b);
-        _;
-    }
-
-    modifier hasEnoughStocks(address addr, uint32 amount) {
-        require(stockholders[addr].stocksCount >= amount);
-        _;
-    }
 
     // Anyone can send money to company because why not
     function deposit() public payable {}
 
     function withdraw(address payable targetAddress) public isDirector {
-        require(!isMeeting);
+        require(!isMeeting, "You can't withdraw funds during the meeting, because it can make dividends impossible to pay");
         targetAddress.transfer(address(this).balance);
     }
 
     function withdraw(address payable targetAddress, uint256 amount) public isDirector notLargerThanBalance(amount) {
-        require(!isMeeting);
+        require(!isMeeting, "You can't withdraw funds during the meeting, because it can make dividends impossible to pay");
         targetAddress.transfer(amount);
     }
 
-    function sellOrder(uint256 sellPrice, uint32 sellCount) public hasEnoughStocks(msg.sender, sellCount) {
+    function sellOrder(uint256 sellPrice, uint32 sellCount) public {
+        require(stockholders[msg.sender].stocksCount >= sellCount, "You are trying to create sell order for more stocks than you have");
         stockholders[msg.sender].sellPrice = sellPrice;
         stockholders[msg.sender].sellCount = sellCount;
     }
 
-    function buyStocks(address payable sellerStockholder, uint32 buyCount) public payable 
-                                                                                hasEnoughStocks(sellerStockholder, buyCount) 
-                                                                                notLessThan(msg.value, stockholders[sellerStockholder].sellPrice * buyCount) {
+    function companySellOrder(uint256 sellPrice, uint32 sellCount) public isDirector {
+        require(stockholders[address(this)].stocksCount >= sellCount, "You are trying to create sell order for more stocks than the company has");
+        stockholders[address(this)].sellPrice = sellPrice;
+        stockholders[address(this)].sellCount = sellCount;
+    }
+
+    function buyStocks(address payable sellerStockholder, uint32 buyCount) public payable {
+        require(stockholders[sellerStockholder].sellCount >= buyCount, "Attempted to buy more stocks than seller is willing to sell");
+        require(msg.value >= stockholders[sellerStockholder].sellPrice * buyCount, "You didn't send enough money to buy stocks");
         uint256 transactionValue = stockholders[sellerStockholder].sellPrice * buyCount;
         stockholders[sellerStockholder].sellCount -= buyCount;
         stockholders[sellerStockholder].stocksCount -= buyCount;
@@ -110,7 +109,8 @@ contract Stocks {
         if (stockholders[msg.sender].stocksCount == 0)
             stockholderList.push(msg.sender);
         stockholders[msg.sender].stocksCount += buyCount;
-        sellerStockholder.transfer(transactionValue);
+        if (sellerStockholder != address(this))
+            sellerStockholder.transfer(transactionValue);
         payable(msg.sender).transfer(msg.value - transactionValue);
     }
 
@@ -123,9 +123,9 @@ contract Stocks {
     
 
     function makeDividendsProposal(uint256 dividendSize) public isStockholder {
-        require((lastMeetingTime + timeBetweenMeetings > block.timestamp)
-             && dividendSize * stocksCount <= address(this).balance
-             && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals <= block.timestamp));
+        require(lastMeetingTime + timeBetweenMeetings > block.timestamp, "Meeting time hasn't come");
+        require(dividendSize * stocksCount <= address(this).balance, "Company doesn't have enough money to pay that large dividends");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals <= block.timestamp, "Proposal time for this meeting has ended");
         isMeeting = true;
         //dividendProposals.push(DividendProposal({
         //        dividendSize: dividendSize,
@@ -136,15 +136,17 @@ contract Stocks {
     }
 
     function vote(uint256 dividendSize) public isStockholder {
-        require(!stockholders[msg.sender].voted && dividendProposals[dividendSize] > 0
-            && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals > block.timestamp
-            && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote <= block.timestamp)));
+        require(!stockholders[msg.sender].voted, "You have already voted");
+        require(dividendProposals[dividendSize] > 0, "This dividend amount hasn't been proposed");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals > block.timestamp, "Voting time hasn't come");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote <= block.timestamp, "Voting time for this meeting has ended");
         stockholders[msg.sender].voted = true;
         dividendProposals[dividendSize] += stockholders[msg.sender].stocksCount;
     }
 
     function payDividends() public isStockholder {
-        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote > block.timestamp);
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote > block.timestamp, "Dividends paying time hasn't come");
+        require(isMeeting, "Dividends can only be paid at the end of a meeting");
         uint32 max_votes = 0;
         uint256 most_voted_dividends = 0;
         for (uint i = 0; i < proposedDividendSizes.length; i++) {
@@ -156,7 +158,8 @@ contract Stocks {
         } 
         delete proposedDividendSizes;
         for (uint i = 0; i < stockholderList.length; i++) {
-            payable(stockholderList[i]).transfer(most_voted_dividends);
+            if (stockholderList[i] != address(this))
+                payable(stockholderList[i]).transfer(most_voted_dividends);
         }
         isMeeting = false;
     }
