@@ -12,26 +12,23 @@ contract Stocks {
         bool voted;
     }
 
-    struct DividendProposal {
-        uint256 dividendSize;
-        uint256 voteCount;
-    }
 
-
-    uint public constant minTimeBetweenMeetings = 10 minutes;
+    uint public constant timeBetweenMeetings = 10 minutes;
     uint public constant minTimeToMakeProposals = 1 minutes;
-    uint public constant minTimeToVote = 1 minutes;
+    uint public constant timeToVote = 1 minutes;
 
 
     address public director;
     uint32 public stocksCount;
     uint lastMeetingTime;
-    bool isProposalTime;
-    bool isVotingTime;
+    bool isMeeting;
+    //bool isProposalTime;
+    //bool isVotingTime;
 
     mapping(address => Stockholder) public stockholders;
 
-    DividendProposal[] public dividendProposals;
+    mapping(uint256 => uint32) public dividendProposals;
+    uint256[] proposedDividendSizes;
 
     constructor(uint32 _stocksCount) {
         director = msg.sender;
@@ -77,10 +74,12 @@ contract Stocks {
     function deposit() public payable {}
 
     function withdraw(address payable targetAddress) public isDirector {
+        require(!isMeeting);
         targetAddress.transfer(address(this).balance);
     }
 
     function withdraw(address payable targetAddress, uint256 amount) public isDirector notLargerThanBalance(amount) {
+        require(!isMeeting);
         targetAddress.transfer(amount);
     }
 
@@ -101,24 +100,46 @@ contract Stocks {
     }
 
     /*function startMeeting() public isStockholder {
-        require(!isProposalTime && !isVotingTime && (lastMeetingTime + minTimeBetweenMeetings > block.timestamp));
+        require(!isProposalTime && !isVotingTime && (lastMeetingTime + timeBetweenMeetings > block.timestamp));
         isProposalTime = true;
         lastMeetingTime = block.timestamp;
     }*/
 
-    modifier isProposalTime
+    
 
     function makeDividendsProposal(uint256 dividendSize) public isStockholder {
-        require(isProposalTime);
-        dividendProposals.push(DividendProposal({
-                dividendSize: dividendSize,
-                voteCount: 0
-            }));
+        require((lastMeetingTime + timeBetweenMeetings > block.timestamp)
+             && dividendSize * stocksCount <= address(this).balance
+             && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals <= block.timestamp));
+        isMeeting = true;
+        //dividendProposals.push(DividendProposal({
+        //        dividendSize: dividendSize,
+        //        voteCount: 0
+        //    }));
+        dividendProposals[dividendSize] = 1;
+        proposedDividendSizes.push(dividendSize);
     }
 
-    function startVoting() public isStockholder {
-        require(isProposalTime && (lastMeetingTime + minTimeToMakeProposals > block.timestamp));
-        isVotingTime = true;
+    function vote(uint256 dividendSize) public isStockholder {
+        require(!stockholders[msg.sender].voted && dividendProposals[dividendSize] > 0
+            && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals > block.timestamp
+            && (lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote <= block.timestamp)));
+        stockholders[msg.sender].voted = true;
+        dividendProposals[dividendSize] += stockholders[msg.sender].stocksCount;
+    }
+
+    function payDividends() public isStockholder {
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote > block.timestamp);
+        uint32 max_votes = 0;
+        uint256 max_voted_dividends = 0;
+        for (uint i = 0; i < proposedDividendSizes.length; i++) {
+            if (dividendProposals[proposedDividendSizes[i]] > max_votes) {
+                max_votes = dividendProposals[proposedDividendSizes[i]];
+                max_voted_dividends = proposedDividendSizes[i];
+            }
+            delete dividendProposals[proposedDividendSizes[i]];
+        } 
+        delete proposedDividendSizes;
     }
 
 }
