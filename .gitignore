@@ -1,2 +1,2 @@
-.deps
-smart_contracts/artifacts
+.deps/
+smart_contracts/artifacts/
