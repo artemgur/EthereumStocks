@@ -9,18 +9,37 @@ contract Stocks {
         uint32 stocksCount;
         uint256 sellPrice;
         uint32 sellCount;
+        bool voted;
     }
+
+    struct DividendProposal {
+        uint256 dividendSize;
+        uint256 voteCount;
+    }
+
+
+    uint public constant minTimeBetweenMeetings = 10 minutes;
+    uint public constant minTimeToMakeProposals = 1 minutes;
+    uint public constant minTimeToVote = 1 minutes;
 
 
     address public director;
     uint32 public stocksCount;
+    uint lastMeetingTime;
+    bool isProposalTime;
+    bool isVotingTime;
 
     mapping(address => Stockholder) public stockholders;
+
+    DividendProposal[] public dividendProposals;
 
     constructor(uint32 _stocksCount) {
         director = msg.sender;
         stocksCount = _stocksCount;
         stockholders[address(this)].stocksCount = _stocksCount;
+        lastMeetingTime = block.timestamp;
+        //isProposalTime = false;
+        //isVotingTime = false;
     }
 
     // modifier to check if caller is owner
@@ -34,8 +53,8 @@ contract Stocks {
         _;
     }
 
-    modifier isStockholder(address addr) {
-        require(stockholders[addr].stocksCount != 0, "Caller is not stockholder");
+    modifier isStockholder() {
+        require(stockholders[msg.sender].stocksCount != 0, "Caller is not stockholder");
         _;
     }
 
@@ -79,6 +98,27 @@ contract Stocks {
         stockholders[msg.sender].stocksCount += buyCount;
         sellerStockholder.transfer(transactionValue);
         payable(msg.sender).transfer(msg.value - transactionValue);
+    }
+
+    /*function startMeeting() public isStockholder {
+        require(!isProposalTime && !isVotingTime && (lastMeetingTime + minTimeBetweenMeetings > block.timestamp));
+        isProposalTime = true;
+        lastMeetingTime = block.timestamp;
+    }*/
+
+    modifier isProposalTime
+
+    function makeDividendsProposal(uint256 dividendSize) public isStockholder {
+        require(isProposalTime);
+        dividendProposals.push(DividendProposal({
+                dividendSize: dividendSize,
+                voteCount: 0
+            }));
+    }
+
+    function startVoting() public isStockholder {
+        require(isProposalTime && (lastMeetingTime + minTimeToMakeProposals > block.timestamp));
+        isVotingTime = true;
     }
 
 }
