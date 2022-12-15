@@ -26,6 +26,7 @@ contract Stocks {
     //bool isVotingTime;
 
     mapping(address => Stockholder) public stockholders;
+    address[] stockholderList;
 
     mapping(uint256 => uint32) public dividendProposals;
     uint256[] proposedDividendSizes;
@@ -94,6 +95,20 @@ contract Stocks {
         uint256 transactionValue = stockholders[sellerStockholder].sellPrice * buyCount;
         stockholders[sellerStockholder].sellCount -= buyCount;
         stockholders[sellerStockholder].stocksCount -= buyCount;
+        if (stockholders[sellerStockholder].stocksCount == 0) {
+            // Deletes stockholder from stockholders array
+            uint stockholderIndex = 0;
+            for (uint i = 0; i < stockholderList.length; i++)
+                if (stockholderList[i] == sellerStockholder) {
+                    stockholderIndex = i;
+                    break;
+                }
+            stockholderList[stockholderIndex] = stockholderList[stockholderList.length - 1];
+            delete stockholderList[stockholderList.length - 1];
+            stockholderList.pop();
+        }
+        if (stockholders[msg.sender].stocksCount == 0)
+            stockholderList.push(msg.sender);
         stockholders[msg.sender].stocksCount += buyCount;
         sellerStockholder.transfer(transactionValue);
         payable(msg.sender).transfer(msg.value - transactionValue);
@@ -131,15 +146,19 @@ contract Stocks {
     function payDividends() public isStockholder {
         require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote > block.timestamp);
         uint32 max_votes = 0;
-        uint256 max_voted_dividends = 0;
+        uint256 most_voted_dividends = 0;
         for (uint i = 0; i < proposedDividendSizes.length; i++) {
             if (dividendProposals[proposedDividendSizes[i]] > max_votes) {
                 max_votes = dividendProposals[proposedDividendSizes[i]];
-                max_voted_dividends = proposedDividendSizes[i];
+                most_voted_dividends = proposedDividendSizes[i];
             }
             delete dividendProposals[proposedDividendSizes[i]];
         } 
         delete proposedDividendSizes;
+        for (uint i = 0; i < stockholderList.length; i++) {
+            payable(stockholderList[i]).transfer(most_voted_dividends);
+        }
+        isMeeting = false;
     }
 
 }
