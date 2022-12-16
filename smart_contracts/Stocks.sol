@@ -2,34 +2,68 @@
 
 pragma solidity >=0.7.0 <0.9.0;
 
+/*
+Торговля акциями происходит так.
+Акционер, который хочет продать акции, выставляет ордер на продажу с помощью функции sellOrder(). 
+Для акции компании ордер создает директор с помощью функции companySellOrder().
+В ордере указывается цена и количество акций.
+Каждый акционер может выставить только 1 ордер на продажу. Это – ограничение реализации, а не бизнес-логики.
+Акционер, который хочет купить акции, находит акционера, который выставил ордер на продажу, и покупает акции по его ордеру.
+*/
+
+
+/*
+Собрание акционеров работает так.
+Есть следующие фазы работы компании, они сменяют друг друга по времени:
+1. Время между собраниями акционеров timeBetweenMeetings
+2. Время на внесение предложений по размеру дивидендов minTimeToMakeProposals
+3. Время на голосование timeToVote
+4. Выплата дивидендов. Ее может запустить любой акционер после завершения фазы голосования. Выплата дивидендов перезапускает "цикл работы компании"
+*/
+
 
 contract Stocks {
 
     struct Stockholder {
+        // Количество акций у акционера
         uint32 stocksCount;
+        // Цена, по которой акционер готов продовать свои акции
         uint256 sellPrice;
+        // Количество акций, которое акционер готов продать
         uint32 sellCount;
+        // Проголосовал ли акционер на идущем собрании акционеров
         bool voted;
     }
 
-
+    // Время между собраниями акционеров
     uint public constant timeBetweenMeetings = 3 minutes;
+    // Время на внесение предложений по размерам дивидендов
     uint public constant minTimeToMakeProposals = 2 minutes;
+    // Время на голосование
     uint public constant timeToVote = 2 minutes;
 
-
+    // Директор компании
     address public director;
+    // Общее количество акций
     uint32 public stocksCount;
+    // Время предыдущего собрания акционеров
     uint public lastMeetingTime;
+    // Идет ли сейчас собрание акционеров
     bool public isMeeting;
 
-
+    // Адрес акционера => данные об акционере
     mapping(address => Stockholder) public stockholders;
+    // Список акционеров компании. Нужен, так как не существует способа получить список ключей mapping
     address[] public stockholderList;
 
+    // Предлагаемый размер дивиденда (на 1 акцию) => количество голосов за это предложение + 1 (так как единицей помечаются предложенные размеры дивиденда)
     mapping(uint256 => uint32) public dividendProposals;
+    // Список предложенных размеров дивиденда. Нужен, так как не существует способа получить список ключей mapping
     uint256[] public proposedDividendSizes;
 
+    // Тот, кто создал смарт-контракт, становится директором компании
+    // _stocksCount – количество акций, которое будет выпущено
+    // После конструктора нужно использовать функцию companySellOrder(), чтобы начать продажу акций
     constructor(uint32 _stocksCount) {
         director = msg.sender;
         stocksCount = _stocksCount;
@@ -55,37 +89,47 @@ contract Stocks {
     }
 
 
-    // Anyone can send money to company because why not
+    // Отправить деньги на счет компании
+    // Кто угодно может отправить деньги компании
     function deposit() public payable {}
 
+    // Перевести все деньги компании на счет targetAddress. Только директор может выводить деньги компании
+    // Во время собрания акционеров нельзя выводить деньги, так как это может сделать невозможной выплату дивидендов
     function withdraw(address payable targetAddress) public isDirector {
         require(!isMeeting, "You can't withdraw funds during the meeting, because it can make dividends impossible to pay");
         targetAddress.transfer(address(this).balance);
     }
 
+    // Перевести сумму amount на счет targetAddress со счета компании. Только директор может выводить деньги компании
+    // Во время собрания акционеров нельзя выводить деньги, так как это может сделать невозможной выплату дивидендов
     function withdraw(address payable targetAddress, uint256 amount) public isDirector notLargerThanBalance(amount) {
         require(!isMeeting, "You can't withdraw funds during the meeting, because it can make dividends impossible to pay");
         targetAddress.transfer(amount);
     }
 
+    // Выставить ордер на продажу
     function sellOrder(uint256 sellPrice, uint32 sellCount) public {
         require(stockholders[msg.sender].stocksCount >= sellCount, "You are trying to create sell order for more stocks than you have");
         stockholders[msg.sender].sellPrice = sellPrice;
         stockholders[msg.sender].sellCount = sellCount;
     }
 
+    // Выставить ордер на продажу акций, принадлежащих компании. Только директор может делать это
     function companySellOrder(uint256 sellPrice, uint32 sellCount) public isDirector {
         require(stockholders[address(this)].stocksCount >= sellCount, "You are trying to create sell order for more stocks than the company has");
         stockholders[address(this)].sellPrice = sellPrice;
         stockholders[address(this)].sellCount = sellCount;
     }
 
+    // Купить акции по существующему ордеру на продажу
+    // На эту функцию нужно отправить сумму денег, достаточную для покупки акций. При необходимости покупателю выплачивается сдача
     function buyStocks(address payable sellerStockholder, uint32 buyCount) public payable {
         require(stockholders[sellerStockholder].sellCount >= buyCount, "Attempted to buy more stocks than seller is willing to sell");
         require(msg.value >= stockholders[sellerStockholder].sellPrice * buyCount, "You didn't send enough money to buy stocks");
         uint256 transactionValue = stockholders[sellerStockholder].sellPrice * buyCount;
         stockholders[sellerStockholder].sellCount -= buyCount;
         stockholders[sellerStockholder].stocksCount -= buyCount;
+        // Если акционер продал все свои акции, удаляем данные о нем
         if (stockholders[sellerStockholder].stocksCount == 0) {
             // Deletes stockholder from stockholders array
             uint stockholderIndex = 0;
@@ -109,7 +153,7 @@ contract Stocks {
             payable(msg.sender).transfer(msg.value - transactionValue);
     }
     
-
+    // Выдвинуть предложение о размере дивидендов
     function makeDividendsProposal(uint256 dividendSize) public isStockholder {
         require(lastMeetingTime + timeBetweenMeetings < block.timestamp, "Meeting time hasn't come");
         require(dividendSize * stocksCount >= address(this).balance, "Company doesn't have enough money to pay that large dividends");
@@ -119,6 +163,8 @@ contract Stocks {
         proposedDividendSizes.push(dividendSize);
     }
 
+    // Проголосовать за размер дивидендов
+    // Этот размер дивидендов должен быть предложен в фазе предложений
     function vote(uint256 dividendSize) public isStockholder {
         require(!stockholders[msg.sender].voted, "You have already voted");
         require(dividendProposals[dividendSize] > 0, "This dividend amount hasn't been proposed");
@@ -128,6 +174,8 @@ contract Stocks {
         dividendProposals[dividendSize] += stockholders[msg.sender].stocksCount;
     }
 
+    // Выплатить дивиденды в размере, выигравшем голосование
+    // Также проводит очистку данных голосования
     function payDividends() public isStockholder {
         require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote < block.timestamp, "Dividends paying time hasn't come");
         require(isMeeting, "Dividends can only be paid at the end of a meeting");
@@ -142,6 +190,7 @@ contract Stocks {
         } 
         delete proposedDividendSizes;
         for (uint i = 0; i < stockholderList.length; i++) {
+            stockholders[stockholderList[i]].voted = false;
             if (stockholderList[i] != address(this))
                 payable(stockholderList[i]).transfer(most_voted_dividends * stockholders[stockholderList[i]].stocksCount);
         }
