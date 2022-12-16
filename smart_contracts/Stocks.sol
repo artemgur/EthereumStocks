@@ -20,16 +20,15 @@ contract Stocks {
 
     address public director;
     uint32 public stocksCount;
-    uint lastMeetingTime;
-    bool isMeeting;
-    //bool isProposalTime;
-    //bool isVotingTime;
+    uint public lastMeetingTime;
+    bool public isMeeting;
+
 
     mapping(address => Stockholder) public stockholders;
-    address[] stockholderList;
+    address[] public stockholderList;
 
     mapping(uint256 => uint32) public dividendProposals;
-    uint256[] proposedDividendSizes;
+    uint256[] public proposedDividendSizes;
 
     constructor(uint32 _stocksCount) {
         director = msg.sender;
@@ -37,17 +36,10 @@ contract Stocks {
         stockholders[address(this)].stocksCount = _stocksCount;
         lastMeetingTime = block.timestamp;
         stockholderList.push(address(this));
-        //isProposalTime = false;
-        //isVotingTime = false;
     }
 
     // modifier to check if caller is owner
     modifier isDirector() {
-        // If the first argument of 'require' evaluates to 'false', execution terminates and all
-        // changes to the state and to Ether balances are reverted.
-        // This used to consume all gas in old EVM versions, but not anymore.
-        // It is often a good idea to use 'require' to check if functions are called correctly.
-        // As a second argument, you can also provide an explanation about what went wrong.
         require(msg.sender == director, "Caller is not director");
         _;
     }
@@ -113,24 +105,13 @@ contract Stocks {
             sellerStockholder.transfer(transactionValue);
         payable(msg.sender).transfer(msg.value - transactionValue);
     }
-
-    /*function startMeeting() public isStockholder {
-        require(!isProposalTime && !isVotingTime && (lastMeetingTime + timeBetweenMeetings > block.timestamp));
-        isProposalTime = true;
-        lastMeetingTime = block.timestamp;
-    }*/
-
     
 
     function makeDividendsProposal(uint256 dividendSize) public isStockholder {
-        require(lastMeetingTime + timeBetweenMeetings > block.timestamp, "Meeting time hasn't come");
-        require(dividendSize * stocksCount <= address(this).balance, "Company doesn't have enough money to pay that large dividends");
+        require(lastMeetingTime + timeBetweenMeetings < block.timestamp, "Meeting time hasn't come");
+        require(dividendSize * stocksCount >= address(this).balance, "Company doesn't have enough money to pay that large dividends");
         require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals <= block.timestamp, "Proposal time for this meeting has ended");
         isMeeting = true;
-        //dividendProposals.push(DividendProposal({
-        //        dividendSize: dividendSize,
-        //        voteCount: 0
-        //    }));
         dividendProposals[dividendSize] = 1;
         proposedDividendSizes.push(dividendSize);
     }
@@ -138,14 +119,14 @@ contract Stocks {
     function vote(uint256 dividendSize) public isStockholder {
         require(!stockholders[msg.sender].voted, "You have already voted");
         require(dividendProposals[dividendSize] > 0, "This dividend amount hasn't been proposed");
-        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals > block.timestamp, "Voting time hasn't come");
-        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote <= block.timestamp, "Voting time for this meeting has ended");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals < block.timestamp, "Voting time hasn't come");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote >= block.timestamp, "Voting time for this meeting has ended");
         stockholders[msg.sender].voted = true;
         dividendProposals[dividendSize] += stockholders[msg.sender].stocksCount;
     }
 
     function payDividends() public isStockholder {
-        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote > block.timestamp, "Dividends paying time hasn't come");
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals + timeToVote < block.timestamp, "Dividends paying time hasn't come");
         require(isMeeting, "Dividends can only be paid at the end of a meeting");
         uint32 max_votes = 0;
         uint256 most_voted_dividends = 0;
@@ -159,8 +140,9 @@ contract Stocks {
         delete proposedDividendSizes;
         for (uint i = 0; i < stockholderList.length; i++) {
             if (stockholderList[i] != address(this))
-                payable(stockholderList[i]).transfer(most_voted_dividends);
+                payable(stockholderList[i]).transfer(most_voted_dividends * stockholders[stockholderList[i]].stocksCount);
         }
+        lastMeetingTime = block.timestamp;
         isMeeting = false;
     }
 
