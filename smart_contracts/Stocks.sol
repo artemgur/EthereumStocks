@@ -159,6 +159,7 @@ contract Stocks {
         require(dividendSize * stocksCount >= address(this).balance, "Company doesn't have enough money to pay that large dividends");
         require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals <= block.timestamp, "Proposal time for this meeting has ended");
         isMeeting = true;
+        // Пометка того, что этот размер дивидендов был предложен. На результаты голосования не влияет
         dividendProposals[dividendSize] = 1;
         proposedDividendSizes.push(dividendSize);
     }
