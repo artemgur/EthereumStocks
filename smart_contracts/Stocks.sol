@@ -13,9 +13,9 @@ contract Stocks {
     }
 
 
-    uint public constant timeBetweenMeetings = 2 minutes;
-    uint public constant minTimeToMakeProposals = 1 minutes;
-    uint public constant timeToVote = 1 minutes;
+    uint public constant timeBetweenMeetings = 3 minutes;
+    uint public constant minTimeToMakeProposals = 2 minutes;
+    uint public constant timeToVote = 2 minutes;
 
 
     address public director;
