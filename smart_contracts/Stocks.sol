@@ -97,14 +97,16 @@ contract Stocks {
             stockholderList[stockholderIndex] = stockholderList[stockholderList.length - 1];
             delete stockholderList[stockholderList.length - 1];
             stockholderList.pop();
-            delete stockholders[sellerStockholder]
+            delete stockholders[sellerStockholder];
         }
         if (stockholders[msg.sender].stocksCount == 0)
             stockholderList.push(msg.sender);
         stockholders[msg.sender].stocksCount += buyCount;
         if (sellerStockholder != address(this))
             sellerStockholder.transfer(transactionValue);
-        payable(msg.sender).transfer(msg.value - transactionValue);
+        // Сдача
+        if (msg.sender != address(this))
+            payable(msg.sender).transfer(msg.value - transactionValue);
     }
     
 
