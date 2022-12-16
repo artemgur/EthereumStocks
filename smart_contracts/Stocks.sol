@@ -38,7 +38,7 @@ contract Stocks {
         stockholderList.push(address(this));
     }
 
-    // modifier to check if caller is owner
+    // modifier to check if caller is director
     modifier isDirector() {
         require(msg.sender == director, "Caller is not director");
         _;
@@ -97,6 +97,7 @@ contract Stocks {
             stockholderList[stockholderIndex] = stockholderList[stockholderList.length - 1];
             delete stockholderList[stockholderList.length - 1];
             stockholderList.pop();
+            delete stockholders[sellerStockholder]
         }
         if (stockholders[msg.sender].stocksCount == 0)
             stockholderList.push(msg.sender);
