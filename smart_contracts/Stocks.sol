@@ -156,10 +156,13 @@ contract Stocks {
     // Выдвинуть предложение о размере дивидендов
     function makeDividendsProposal(uint256 dividendSize) public isStockholder {
         // Если время выдвижения предложений прошло, а предложений нет, начинаем встречу прямо сейчас
-        if ((lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals >= block.timestamp) && (proposedDividendSizes.length == 0))
-            lastMeetingTime = block.timestamp - timeBetweenMeetings;
-        else
-            require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals >= block.timestamp, "Proposal time for this meeting has ended");
+        if ((lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals < block.timestamp) && (proposedDividendSizes.length == 0))
+        //{
+        //    require(false, "Test");
+            lastMeetingTime = block.timestamp - timeBetweenMeetings - 1;
+        //}
+        //else
+        require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals >= block.timestamp, "Proposal time for this meeting has ended");
         require(lastMeetingTime + timeBetweenMeetings < block.timestamp, "Meeting time hasn't come");
         require(dividendSize * stocksCount <= address(this).balance, "Company doesn't have enough money to pay that large dividends");
         isMeeting = true;
