@@ -159,7 +159,7 @@ contract Stocks {
         if ((lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals < block.timestamp) && (proposedDividendSizes.length == 0))
         //{
         //    require(false, "Test");
-            lastMeetingTime = block.timestamp - timeBetweenMeetings - 1;
+            lastMeetingTime = block.timestamp - timeBetweenMeetings - minTimeToMakeProposals;
         //}
         //else
         require(lastMeetingTime + timeBetweenMeetings + minTimeToMakeProposals >= block.timestamp, "Proposal time for this meeting has ended");
